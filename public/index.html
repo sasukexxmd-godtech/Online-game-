@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Multiplayer Aim Game</title>
+<style>
+  body { margin:0; background:#0a0f18; color:white; font-family:Arial; }
+  #game { background:#111722; display:block; margin:0 auto; }
+  #scoreboard {
+    position:absolute; top:10px; left:10px; background:#0006; padding:10px; border-radius:8px;
+  }
+</style>
+</head>
+
+<body>
+<canvas id="game" width="900" height="600"></canvas>
+<div id="scoreboard"></div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const scoreboard = document.getElementById("scoreboard");
+
+const socket = io();
+
+// game state
+let players = {};
+let targets = [];
+
+// INIT FROM SERVER
+socket.on("init", data => {
+  players = data.players;
+  targets = data.targets;
+});
+
+// New player join
+socket.on("playerJoin", p => players[p.id] = p);
+
+// Player leave
+socket.on("playerLeave", id => delete players[id]);
+
+socket.on("playerMove", ({id,x,y}) => {
+  if (players[id]) { players[id].x = x; players[id].y = y; }
+});
+
+socket.on("scoreUpdate", ({id,score}) => {
+  if (players[id]) players[id].score = score;
+});
+
+socket.on("targetSpawn", t => targets.push(t));
+
+socket.on("targetHit", id => {
+  targets = targets.filter(t => t.id !== id);
+});
+
+// controls
+canvas.addEventListener("mousemove", e => {
+  const r = canvas.getBoundingClientRect();
+  const x = e.clientX - r.left;
+  const y = e.clientY - r.top;
+  socket.emit("move", { x, y });
+});
+
+canvas.addEventListener("click", e => {
+  const r = canvas.getBoundingClientRect();
+  const x = e.clientX - r.left;
+  const y = e.clientY - r.top;
+  socket.emit("shoot", { x, y });
+});
+
+// render loop
+function loop() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // draw players
+  for (const id in players) {
+    const p = players[id];
+    ctx.beginPath();
+    ctx.fillStyle = id === socket.id ? "cyan" : "white";
+    ctx.arc(p.x, p.y, 10, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // draw targets
+  for (const t of targets) {
+    ctx.beginPath();
+    ctx.fillStyle = "orange";
+    ctx.arc(t.x, t.y, t.r, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // scoreboard
+  scoreboard.innerHTML =
+    Object.values(players)
+      .sort((a,b)=>b.score-a.score)
+      .map(p => `<div>${p.id.substring(0,4)}: ${p.score}</div>`)
+      .join("");
+
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+
+</body>
+</html>
